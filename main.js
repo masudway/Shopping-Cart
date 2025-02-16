@@ -1,19 +1,25 @@
 const store = {
-    shoppingCart: [],  
-    productList: []    
+    shoppingCart: [],
+    productList: [],
+    appliedPromoCode: null,
+    promoCodeDiscounts: {
+        'ostad10': 0.10, // 10% discount
+        'ostad5': 0.05   // 5% discount
+    }
 };
+
 async function startWebsite() {
     try {
         const response = await fetch('https://fakestoreapi.in/api/products');
         const data = await response.json();
         store.productList = data.products;
-
         showProducts();
     } catch (error) {
         console.error('Oops! Could not load products:', error);
         showErrorMessage();
     }
 }
+
 function showErrorMessage() {
     const productArea = document.getElementById('productGrid');
     productArea.innerHTML = `
@@ -25,6 +31,7 @@ function showErrorMessage() {
         </div>
     `;
 }
+
 function showProducts() {
     const productArea = document.getElementById('productGrid');
     productArea.innerHTML = store.productList.map(product => {
@@ -74,11 +81,10 @@ function addToCart(productId, title, price, image) {
 }
 
 function updateCartDisplay() {
-    updateCartItems();        
-    updateCartSummary();      
-    updateCartBadge();        
+    updateCartItems();
+    updateCartSummary();
+    updateCartBadge();
 }
-
 
 function updateCartItems() {
     const cartArea = document.getElementById('cartItems');
@@ -100,82 +106,99 @@ function updateCartItems() {
                 <div class="cart-item-title">${item.title}</div>
                 <div class="cart-item-price">$${(item.price * item.quantity).toFixed(2)}</div>
                 <div class="cart-item-actions">
-                    <button class="btn-quantity" onclick="changeQuantity(${item.id}, 'decrease')">
-                        <i class="fas fa-minus"></i>
-                    </button>
-                    <span>${item.quantity}</span>
-                    <button class="btn-quantity" onclick="changeQuantity(${item.id}, 'increase')">
-                        <i class="fas fa-plus"></i>
-                    </button>
-                    <button class="btn-remove" onclick="removeFromCart(${item.id})">
-                        <i class="fas fa-trash"></i>
-                    </button>
+                    <button class="btn-quantity" onclick="updateQuantity(${item.id}, ${item.quantity - 1})">-</button>
+                    <span class="btn-quantity">${item.quantity}</span>
+                    <button class="btn-quantity" onclick="updateQuantity(${item.id}, ${item.quantity + 1})">+</button>
+                    <button class="btn-remove" onclick="removeItem(${item.id})">Remove</button>
                 </div>
             </div>
         </div>
     `).join('');
 }
 
-function updateCartSummary() {
-    const subtotal = store.shoppingCart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-    const tax = subtotal * 0.1;
-    const total = subtotal + tax;
-    const itemCount = store.shoppingCart.reduce((sum, item) => sum + item.quantity, 0);
-
-    document.getElementById('subtotalPrice').textContent = subtotal.toFixed(2);
-    document.getElementById('vat').textContent = tax.toFixed(2);
-    document.getElementById('total').textContent = total.toFixed(2);
-    document.getElementById('itemCount').textContent = itemCount;
-}
-
-function updateCartBadge() {
-    const itemCount = store.shoppingCart.reduce((sum, item) => sum + item.quantity, 0);
-    const badge = document.getElementById('cartBadge');
-    badge.textContent = itemCount;
-    badge.style.display = itemCount > 0 ? 'block' : 'none';
-}
-
-function changeQuantity(productId, action) {
+function updateQuantity(productId, newQuantity) {
     const item = store.shoppingCart.find(item => item.id === productId);
-    if (!item) return;
-
-    if (action === 'increase') {
-        item.quantity += 1;
-    } else if (action === 'decrease' && item.quantity > 1) {
-        item.quantity -= 1;
+    if (item) {
+        if (newQuantity <= 0) {
+            removeItem(productId);
+        } else {
+            item.quantity = newQuantity;
+            updateCartDisplay();
+        }
     }
-
-    updateCartDisplay();
 }
 
-function removeFromCart(productId) {
+function removeItem(productId) {
     store.shoppingCart = store.shoppingCart.filter(item => item.id !== productId);
     updateCartDisplay();
 }
 
-function toggleCart() {
-    const sidebar = document.getElementById('cartSidebar');
-    sidebar.classList.toggle('open');
+function updateCartSummary() {
+    const subtotal = store.shoppingCart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+    const tax = subtotal * 0.10;
+    const discount = store.appliedPromoCode ? subtotal * store.promoCodeDiscounts[store.appliedPromoCode] : 0;
+    const total = subtotal + tax - discount;
+
+    document.getElementById('subtotalPrice').textContent = subtotal.toFixed(2);
+    document.getElementById('vat').textContent = tax.toFixed(2);
+    document.getElementById('discount').textContent = discount.toFixed(2);
+    document.getElementById('total').textContent = total.toFixed(2);
+
+    document.querySelector('.discount-row').style.display = store.appliedPromoCode ? 'flex' : 'none';
 }
 
-function closeCart() {
-    document.getElementById('cartSidebar').classList.remove('open');
+function updateCartBadge() {
+    const totalItems = store.shoppingCart.reduce((sum, item) => sum + item.quantity, 0);
+    document.getElementById('cartBadge').textContent = totalItems;
 }
 
-function showSuccessMessage() {
-    const toast = new bootstrap.Toast(document.getElementById('toast'));
-    toast.show();
+function applyPromoCode() {
+    const promoCodeInput = document.getElementById('promoCodeInput');
+    const promoCode = promoCodeInput.value.trim();
+    const promoCodeMessage = document.getElementById('promoCodeMessage');
+
+    if (store.appliedPromoCode) {
+        promoCodeMessage.textContent = 'A promo code has already been applied.';
+        promoCodeMessage.className = 'promo-code-message error';
+        return;
+    }
+
+    if (store.promoCodeDiscounts[promoCode]) {
+        store.appliedPromoCode = promoCode;
+        promoCodeMessage.textContent = 'Promo code applied successfully!';
+        promoCodeMessage.className = 'promo-code-message success';
+        updateCartSummary();
+    } else {
+        promoCodeMessage.textContent = 'Invalid promo code.';
+        promoCodeMessage.className = 'promo-code-message error';
+    }
 }
 
 function checkout() {
     if (store.shoppingCart.length === 0) {
-        alert('Please add items to your cart before checking out.');
+        alert('Your cart is empty!');
         return;
     }
-    
-    const total = store.shoppingCart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-    const finalTotal = (total * 1.1).toFixed(2);
-    alert(`Thank you for shopping! Your total is: $${finalTotal}`);
+    alert('Thank you for your purchase!');
+    store.shoppingCart = [];
+    store.appliedPromoCode = null;
+    updateCartDisplay();
 }
 
-document.addEventListener('DOMContentLoaded', startWebsite);
+function toggleCart() {
+    const cartSidebar = document.getElementById('cartSidebar');
+    cartSidebar.classList.toggle('open');
+}
+
+function closeCart() {
+    const cartSidebar = document.getElementById('cartSidebar');
+    cartSidebar.classList.remove('open');
+}
+
+function showSuccessMessage() {
+    const toast = document.getElementById('toast');
+    const toastInstance = new bootstrap.Toast(toast);
+    toastInstance.show();
+}
+
+startWebsite();
